@@ -1,65 +1,98 @@
-from socket import *
-from threading import Thread
+import socket
+import threading
+import os
+close_flag = False
+PORT = 50500
+SERVER = socket.gethostbyname(socket.gethostname())
+ADDR = (SERVER, PORT)
+FORMAT = 'utf-8'
+FILES_PATH = os.getcwd() + "\Files\\"  # Thư mục chứa file trên server
+def send_list_file(client_socket):
+    try:
+        with open("input.txt", 'r') as file:
+            file_list = file.read()
+        client_socket.sendall(file_list.encode())
+        print("Send list file successfully")
+    except Exception as e:
+        print(f"Error: {e}")
 
-# Ham lay kich thuoc file (bytes)
-def getNumOfBytes(size):
-    res = 0
-    i = 0
-    while i < len(size):
-        if size[i] >= '0' and size[i] <= '9':
-            i += 1
-        else:
-            break
-    res = int(size[:i])
-    if size[i:] == "KB":
-        res = res*1024
-    elif size[i:] == "MB":
-        res = res*1024*1024
-    elif size[i:] == "GB":
-        res = res*1024*1024*1024
-    return res
-            
+def send_file_chunk_socket(filename, start, end, conn):
+    try:
+        filepath = os.path.join(FILES_PATH, filename)
+
+        #gui dung luong cua chunk
+        conn.send((str(end - start + 1) + " " + str(start)).encode())
+        print("send chunk size successfully")
+        with open(filepath, 'rb') as file:
+            file.seek(start)
+            remaining_bytes = end - start + 1
+            while remaining_bytes > 0:
+                chunk_size = min(1024, remaining_bytes)
+                data = file.read(chunk_size)
+                if not data:
+                    break
+                conn.send(data)
+                remaining_bytes -= len(data)
+        print(f"Sent chunk {start}-{end} of file {filename}.")
+    except Exception as e:
+        print(f"Error when sending file chunk: {e}")
+
+def handle_client(conn, addr):
+    try:
+        print(f"Connected by {addr}")
+
+        # Gửi danh sách file tới client
+        send_list_file(conn)
+
+        while True:
+            # Nhận yêu cầu từ client
+            request = conn.recv(1024).decode(FORMAT)
+            if not request:
+                continue
+
+            parts = request.split()
+            command = parts[0]
+
+            if command == "DOWNLOAD":
+                filename = parts[1]
+                chunk = int(parts[2])
+                filepath = os.path.join(FILES_PATH, filename)
+
+                if not os.path.exists(filepath):
+                    conn.sendall(b"ERROR")
+                    print(f"File {filename} does not exist.")
+                    continue
+
+                file_size = os.path.getsize(filepath)
+                chunk_size = file_size // 4
+                start = chunk * chunk_size
+                end = start + chunk_size - 1 if chunk < 3 else file_size - 1
+                send_file_chunk_socket(filename,start,end,conn)
+            else:
+                conn.sendall(b"INVALID COMMAND")
+                print(f"Invalid command received: {request}")
+    except Exception as e:
+        print(f"Error handling client {addr}: {e}")
+    #finally:
+     #   conn.close()
+      #  print(f"Connection with {addr} closed.")
+
+def start_server():
+    os.makedirs(FILES_PATH, exist_ok=True)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(ADDR)
+    server.listen(10)
+    print(f"Server started on {SERVER}:{PORT}")
+
+    while True:
+        try:
+            conn, addr = server.accept()
+            thread = threading.Thread(target=handle_client, args=(conn, addr))
+            thread.start()
+            print(f"Active connections: {threading.active_count() - 1}")
+        except Exception as e:
+            print(f"Error accepting connections: {e}")
         
-
-def getListOfFile(file_name):
-    list = {}
-    f = open(file_name,"rt")
-    for line in f:#Doc tung dong trong file
-        temp = line.split()
-        list[temp[0]] = getNumOfBytes(temp[1])
-    f.close()
-    return list
-
-def accept_connections():
-    client, addr = server.accept()
-    Thread(target=handle_client, args=(client,)).start()
-
-def handle_client(client): 
-    data = ""
-    for file in list_of_file:
-        # Gui list file 
-        data += file + " " + str(list_of_file[file]) + "\n"
-    client.send(bytes(data,"utf8"))
-    
-        
-
-def handle_downloading(client, file_name, chunk, offset):
-    a = 0
-    
-
-
-HOST = '127.0.0.1'
-PORT = 12345
-BUFFSIZE = 1024
-
-server = socket(AF_INET,SOCK_STREAM)
-server.bind((HOST,PORT))
-list_of_file = getListOfFile("input.txt")
 
 if __name__ == "__main__":
-    server.listen(5)
-    ACCEPT_THREAD = Thread(target=accept_connections)
-    
-    ACCEPT_THREAD.start()
-    ACCEPT_THREAD.join()
-    server.close()
+    start_server()
