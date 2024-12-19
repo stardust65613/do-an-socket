@@ -113,7 +113,7 @@ if __name__ == "__main__":
     if server_file_display == False:
         printServerFile()
         server_file_display = True
-        update_files_thread = Thread(target=getListOfFile, args = ("input1.txt",file_list),daemon=True)
+        update_files_thread = Thread(target=getListOfFile, args = ("input.txt",file_list),daemon=True)
         update_files_thread.start()
         for i in range(connections):
             thread = Thread(target=handle_connection,args=(client_sockets[i],i,PATH),daemon=True)
