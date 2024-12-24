@@ -117,8 +117,6 @@ server_file = {}
 chunk_sizes = [0,0,0,0]
 recv_bytes = [0,0,0,0]
 barrier = threading.Barrier(4)
-#khoang thoi gian duyet lại file 
-interval = 5
 close_flag = False
 
 if __name__ == "__main__":
