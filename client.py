@@ -16,16 +16,26 @@ def getListOfFile(file_name, list):
         time.sleep(5)
        
 
+def printProgress(file,isFinish):
+    global recv_bytes
+    global chunk_sizes
+    txt = ""
+    for i in range(4):
+        txt += "Downloading " + file + " part " + str(i+1) + "... " + str(round(recv_bytes[i]/chunk_sizes[i]*100)) + "%\n"
+    print(txt,end = "")
+    if isFinish == True:
+        print("The file "+file+" has been downloaded successfully!")
+        return
+    print('\033[4A',end="")
+
 def connect(address):
     client_socket = socket(AF_INET, SOCK_STREAM)
     client_socket.connect(address)
-    print("Connection established")
     msg = client_socket.recv(BUFFSIZE).decode("utf8")
     getServerFiles(msg)
     return client_socket
 
   
-    
 def getServerFiles(msg):
     temp = msg.split("\n")
     if "" in temp:
@@ -37,8 +47,10 @@ def getServerFiles(msg):
     
 
 def printServerFile():
+    print("Server files:")
     for s in server_file:
-        print(s + " " + server_file[s],end=" ")
+        print(s + " " + server_file[s],end="\n")
+    print("\n")
     
 def handle_connection(socket,id,PATH):
     global file_list
@@ -49,7 +61,7 @@ def handle_connection(socket,id,PATH):
                 if file in downloaded_file:
                     continue
                 received_bytes = 0
-
+                
                 #Gui ten file can tai
                 socket.send(str("DOWNLOAD " + file + " " + str(id)).encode("utf8"))
                 data = socket.recv(BUFFSIZE)
@@ -61,6 +73,7 @@ def handle_connection(socket,id,PATH):
                     continue
                 msg = data.decode("utf8").split()
                 chunk_size = int(msg[0])
+                chunk_sizes[id] = chunk_size
                 start = int(msg[1])
                 if os.path.isfile(PATH + file) == False:
                     with open(PATH + file,"wb") as f:
@@ -68,16 +81,27 @@ def handle_connection(socket,id,PATH):
                 with open(PATH + file,"r+b") as f:
                     f.seek(start)
                     while True:
+                        global recv_bytes
                         data = socket.recv(BUFFSIZE)
                         received_bytes += len(data)
+                        recv_bytes[id] = received_bytes
                         f.write(data)
-                        print("Downloading " + file + " part " + str(id+1) + "... " + str(round(received_bytes/chunk_size*100)) + "%")
-
+                        #tim socket tai cham nhat
+                        mn = min(recv_bytes)
+                        min_id = recv_bytes.index(mn)
+                        #xuat ra man hinh qua trinh tai
+                        if id == min_id:
+                            printProgress(file,False)
                         if received_bytes >= chunk_size:
                             f.close()
                             break
                     barrier.wait()
+                    #thong bao khi tai hoan tat
+                    if id == 0:
+                        printProgress(file,True)
+                    barrier.wait()
                     downloaded_file.append(file)
+                    recv_bytes[id] = 0
 
         except KeyboardInterrupt:
             break
@@ -96,6 +120,7 @@ barrier = threading.Barrier(4)
 #khoang thoi gian duyet lại file 
 interval = 5
 close_flag = False
+
 if __name__ == "__main__":
     HOST = input("Nhap IP: ")  
     PORT = int(input("Nhap port: "))
@@ -109,17 +134,18 @@ if __name__ == "__main__":
         new_soc = connect(ADDRESS)
         client_sockets.append(new_soc)
         
+    print("Connection established")    
 
     if server_file_display == False:
         printServerFile()
         server_file_display = True
-        update_files_thread = Thread(target=getListOfFile, args = ("input.txt",file_list),daemon=True)
+        update_files_thread = Thread(target=getListOfFile, args = ("input1.txt",file_list),daemon=True)
         update_files_thread.start()
         for i in range(connections):
             thread = Thread(target=handle_connection,args=(client_sockets[i],i,PATH),daemon=True)
             threads.append(thread)
             thread.start()              
-
+        
         try:
             while True:
                 time.sleep(0.1)
